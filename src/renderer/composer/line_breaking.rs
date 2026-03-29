@@ -634,38 +634,24 @@ pub(crate) fn reflow_line_segs(
     let ls_type = para_style.map(|s| s.line_spacing_type).unwrap_or(LineSpacingType::Percent);
     let ls_value = para_style.map(|s| s.line_spacing).unwrap_or(160.0);
 
-    // 원본 LineSeg가 유효한 경우 dimension 보존, 없으면 새로 계산
-    // line_spacing은 항상 ParaShape에서 재계산 (줄간격 변경 반영)
+    // 줄별 max_font_size에 따라 line_height/text_height/baseline_distance를 계산
+    // 한컴은 줄마다 최대 폰트 크기에 맞게 다른 치수를 사용
     let make_line_seg = |utf16_start: u32, max_font_size: f64| -> LineSeg {
-        if let (true, Some(ref o)) = (has_valid_orig, &orig) {
-            let line_spacing_hwp = compute_line_spacing_hwp(ls_type, ls_value, o.line_height, dpi);
-            LineSeg {
-                text_start: utf16_start,
-                line_height: o.line_height,
-                text_height: o.text_height,
-                baseline_distance: o.baseline_distance,
-                line_spacing: line_spacing_hwp,
-                segment_width: seg_width_hwp,
-                tag: if o.tag != 0 { o.tag } else { 0x00060000 },
-                ..Default::default()
-            }
-        } else {
-            let fs = if max_font_size > 0.0 { max_font_size } else { 12.0 };
-            let line_height_hwp = font_size_to_line_height(fs, dpi);
-            // HWP 실증 데이터: text_height = line_height, baseline_distance = line_height * 0.85
-            let text_height_hwp = line_height_hwp;
-            let line_spacing_hwp = compute_line_spacing_hwp(ls_type, ls_value, line_height_hwp, dpi);
-            let orig_tag = orig.as_ref().map(|ls| ls.tag).unwrap_or(0x00060000);
-            LineSeg {
-                text_start: utf16_start,
-                line_height: line_height_hwp,
-                text_height: text_height_hwp,
-                baseline_distance: (line_height_hwp as f64 * 0.85) as i32,
-                line_spacing: line_spacing_hwp,
-                segment_width: seg_width_hwp,
-                tag: if orig_tag != 0 { orig_tag } else { 0x00060000 },
-                ..Default::default()
-            }
+        let fs = if max_font_size > 0.0 { max_font_size } else { 12.0 };
+        let line_height_hwp = font_size_to_line_height(fs, dpi);
+        let text_height_hwp = line_height_hwp;
+        let baseline_distance_hwp = (line_height_hwp as f64 * 0.85) as i32;
+        let line_spacing_hwp = compute_line_spacing_hwp(ls_type, ls_value, line_height_hwp, dpi);
+        let orig_tag = orig.as_ref().map(|ls| ls.tag).unwrap_or(0x00060000);
+        LineSeg {
+            text_start: utf16_start,
+            line_height: line_height_hwp,
+            text_height: text_height_hwp,
+            baseline_distance: baseline_distance_hwp,
+            line_spacing: line_spacing_hwp,
+            segment_width: seg_width_hwp,
+            tag: if orig_tag != 0 { orig_tag } else { 0x00060000 },
+            ..Default::default()
         }
     };
 
