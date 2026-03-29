@@ -14,7 +14,8 @@ use super::{find_active_char_shape, is_lang_neutral};
 #[derive(Debug, Clone)]
 pub(crate) enum BreakToken {
     /// 분할 불가 텍스트 조각 (어절/단어/글자)
-    Text { start_idx: usize, end_idx: usize, width: f64, max_font_size: f64 },
+    /// char_widths: 글자별 px 폭 (char_level_break용, 단일 글자 토큰은 비어있음)
+    Text { start_idx: usize, end_idx: usize, width: f64, max_font_size: f64, char_widths: Vec<f64> },
     /// 공백 (줄 바꿈 가능 지점, 줄 끝에서 흡수)
     Space { idx: usize, width: f64, max_font_size: f64 },
     /// 탭 (줄 바꿈 가능 지점, 폭은 줄 위치에 따라 동적)
@@ -189,9 +190,8 @@ pub(crate) fn tokenize_paragraph(
                 }
 
                 if !token_text.is_empty() {
-                    // 토큰 전체를 글자별로 측정하여 합산
                     let width = measure_token_width(&token_text, start, char_offsets, char_shapes, styles, current_lang);
-                    tokens.push(BreakToken::Text { start_idx: start, end_idx: i, width, max_font_size: max_fs });
+                    tokens.push(BreakToken::Text { start_idx: start, end_idx: i, width, max_font_size: max_fs, char_widths: vec![] });
                 }
                 continue;
             } else {
@@ -202,7 +202,7 @@ pub(crate) fn tokenize_paragraph(
                 let ts = resolved_to_text_style(styles, style_id, current_lang);
                 let fs = if ts.font_size > 0.0 { ts.font_size } else { 12.0 };
                 let w = estimate_text_width_unrounded(&ch.to_string(), &ts);
-                tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs });
+                tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs, char_widths: vec![] });
                 i += 1;
                 continue;
             }
@@ -252,7 +252,16 @@ pub(crate) fn tokenize_paragraph(
 
                 if !token_text.is_empty() {
                     let width = measure_token_width(&token_text, start, char_offsets, char_shapes, styles, current_lang);
-                    tokens.push(BreakToken::Text { start_idx: start, end_idx: i, width, max_font_size: max_fs });
+                    // 개별 글자 폭 수집 (char_level_break용)
+                    let cw: Vec<f64> = (start..i).map(|ci| {
+                        let c = text_chars[ci];
+                        let u16p = if ci < char_offsets.len() { char_offsets[ci] } else { ci as u32 };
+                        let sid = find_active_char_shape(char_shapes, u16p);
+                        let lang = if is_lang_neutral(c) { current_lang } else { 1 };
+                        let ts = resolved_to_text_style(styles, sid, lang);
+                        estimate_text_width_unrounded(&c.to_string(), &ts)
+                    }).collect();
+                    tokens.push(BreakToken::Text { start_idx: start, end_idx: i, width, max_font_size: max_fs, char_widths: cw });
                 }
                 continue;
             } else {
@@ -263,7 +272,7 @@ pub(crate) fn tokenize_paragraph(
                 let ts = resolved_to_text_style(styles, style_id, current_lang);
                 let fs = if ts.font_size > 0.0 { ts.font_size } else { 12.0 };
                 let w = estimate_text_width_unrounded(&ch.to_string(), &ts);
-                tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs });
+                tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs, char_widths: vec![] });
                 i += 1;
                 continue;
             }
@@ -277,7 +286,7 @@ pub(crate) fn tokenize_paragraph(
             let ts = resolved_to_text_style(styles, style_id, current_lang);
             let fs = if ts.font_size > 0.0 { ts.font_size } else { 12.0 };
             let w = estimate_text_width_unrounded(&ch.to_string(), &ts);
-            tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs });
+            tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs, char_widths: vec![] });
             i += 1;
             continue;
         }
@@ -294,7 +303,7 @@ pub(crate) fn tokenize_paragraph(
             let ts = resolved_to_text_style(styles, style_id, lang);
             let fs = if ts.font_size > 0.0 { ts.font_size } else { 12.0 };
             let w = estimate_text_width_unrounded(&ch.to_string(), &ts);
-            tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs });
+            tokens.push(BreakToken::Text { start_idx: i, end_idx: i + 1, width: w, max_font_size: fs, char_widths: vec![] });
             i += 1;
         }
     }
@@ -440,7 +449,7 @@ fn fill_lines(
                 fs_at_last_break = line_max_fs;
                 lw += to_hwp(*width);
             }
-            BreakToken::Text { start_idx, end_idx, width, max_font_size } => {
+            BreakToken::Text { start_idx, end_idx, width, max_font_size, ref char_widths } => {
                 if *max_font_size > line_max_fs { line_max_fs = *max_font_size; }
 
                 // 단일 문자 CJK/한글 토큰의 줄바꿈 가능 지점 처리
@@ -485,12 +494,14 @@ fn fill_lines(
                             continue;
                         }
                     }
+                    // 토큰에 저장된 개별 글자 폭을 HWPUNIT로 변환
+                    let cw_hwp: Vec<i32> = char_widths.iter().map(|w| to_hwp(*w)).collect();
                     let (results_part, remaining_w, remaining_fs) = char_level_break_hwp(
                         text_chars, *start_idx, *end_idx,
                         &mut line_start_idx, lw, line_max_fs,
                         eff_w(is_first_line), eff_w(false),
                         is_first_line,
-                        w_hwp, // 토큰의 정확한 HWPUNIT 폭
+                        &cw_hwp,
                     );
                     for r in results_part {
                         results.push(r);
@@ -555,6 +566,7 @@ fn recalc_width_hwp(
 }
 
 /// 긴 단어 폴백: 글자 단위 분할 (HWPUNIT)
+/// char_widths_hwp: 토큰 내 각 글자의 HWPUNIT 폭 (None이면 휴리스틱)
 fn char_level_break_hwp(
     text_chars: &[char],
     token_start: usize,
@@ -565,16 +577,15 @@ fn char_level_break_hwp(
     first_line_w: i32,
     normal_w: i32,
     mut is_first_line: bool,
-    token_width_hwp: i32, // 토큰 전체 HWPUNIT 폭 (정확한 메트릭 기반)
+    char_widths_hwp: &[i32], // 토큰 내 글자별 HWPUNIT 폭
 ) -> (Vec<LineBreakResult>, i32, f64) {
     let mut results = Vec::new();
     let mut current_w = if is_first_line { first_line_w } else { normal_w };
-    let token_char_count = token_end - token_start;
 
     for ci in token_start..token_end {
-        // 토큰 폭을 글자 수로 균등 분배 (정확한 메트릭 기반)
-        let char_w = if token_char_count > 0 {
-            token_width_hwp / token_char_count as i32
+        let rel_idx = ci - token_start;
+        let char_w = if rel_idx < char_widths_hwp.len() {
+            char_widths_hwp[rel_idx]
         } else {
             let ch = text_chars[ci];
             let char_w_px = if is_cjk_char(ch) { line_max_fs.max(12.0) } else { line_max_fs.max(12.0) * 0.5 };
