@@ -32,7 +32,40 @@ Windows CMD 또는 PowerShell에서 실행:
 
 Chrome이 시작되면 빈 탭이 열린다. 테스트 실행 시 새 탭이 자동으로 열려 테스트 과정을 실시간으로 볼 수 있다.
 
-### 1.3 Vite 개발 서버 시작 (WSL2)
+### 1.3 WSL2 ↔ Windows 포트 포워딩 설정
+
+Windows 11 호스트의 WSL2 Ubuntu에서 호스트 Chrome의 CDP에 접속하려면 **포트 프록시** 설정이 필요하다.
+
+Windows **관리자 권한** PowerShell에서 실행:
+
+```powershell
+# WSL2 IP 확인 (Ubuntu 쪽에서: hostname -I)
+# 예: 172.21.192.102
+
+# 포트 프록시 추가
+netsh interface portproxy add v4tov4 listenport=19222 listenaddress=0.0.0.0 connectport=19222 connectaddress=172.21.192.102
+
+# 확인
+netsh interface portproxy show v4tov4
+```
+
+| 항목 | 설명 |
+|------|------|
+| `listenport=19222` | Windows에서 수신할 포트 |
+| `listenaddress=0.0.0.0` | 모든 인터페이스에서 수신 |
+| `connectport=19222` | Chrome CDP 포트와 동일 |
+| `connectaddress=172.21.192.102` | WSL2의 IP (재부팅 시 변경될 수 있음) |
+
+> **주의**: WSL2 IP는 재부팅마다 변경된다. 변경 시 포트 프록시를 재설정해야 한다.
+>
+> ```powershell
+> # 기존 설정 삭제
+> netsh interface portproxy delete v4tov4 listenport=19222 listenaddress=0.0.0.0
+> # 새 IP로 재설정
+> netsh interface portproxy add v4tov4 listenport=19222 listenaddress=0.0.0.0 connectport=19222 connectaddress=<새 WSL2 IP>
+> ```
+
+### 1.4 Vite 개발 서버 시작 (WSL2)
 
 ```bash
 cd rhwp-studio
