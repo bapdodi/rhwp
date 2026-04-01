@@ -397,6 +397,23 @@ impl LayoutEngine {
             }
         }
 
+        // 글상자 내부 표: 셀 너비 합이 컨테이너 폭을 초과하면 비례 축소
+        let col_sum: f64 = col_widths.iter().sum();
+        let max_w = {
+            let common_w = hwpunit_to_px(table.common.width as i32, self.dpi);
+            if common_w > 0.0 && common_w < container.width {
+                common_w
+            } else {
+                container.width
+            }
+        };
+        if col_sum > max_w + 1.0 {
+            let scale = max_w / col_sum;
+            for w in &mut col_widths {
+                *w *= scale;
+            }
+        }
+
         // 행 높이 계산 (layout_table과 동일한 resolve_row_heights 사용)
         let row_heights = self.resolve_row_heights(table, col_count, row_count, None, styles);
 
