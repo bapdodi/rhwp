@@ -150,15 +150,21 @@ impl Paginator {
                 let has_tac = para.controls.iter().any(|c|
                     matches!(c, Control::Table(t) if t.common.treat_as_char));
                 if has_tac {
-                    // 표 실측 높이 합산
+                    // 표 실측 높이 합산 (outer_top + line_spacing 포함, outer_bottom 제외)
+                    let mut tac_ci = 0usize;
                     let tac_h: f64 = para.controls.iter().enumerate()
                         .filter_map(|(ci, c)| {
                             if let Control::Table(t) = c {
                                 if t.common.treat_as_char {
                                     let mt_h = measured.get_table_height(para_idx, ci).unwrap_or(0.0);
-                                    let outer = crate::renderer::hwpunit_to_px(
-                                        (t.outer_margin_top + t.outer_margin_bottom) as i32, self.dpi);
-                                    Some(mt_h + outer)
+                                    let outer_top = crate::renderer::hwpunit_to_px(
+                                        t.outer_margin_top as i32, self.dpi);
+                                    let ls = para.line_segs.get(tac_ci)
+                                        .filter(|seg| seg.line_spacing > 0)
+                                        .map(|seg| crate::renderer::hwpunit_to_px(seg.line_spacing, self.dpi))
+                                        .unwrap_or(0.0);
+                                    tac_ci += 1;
+                                    Some(mt_h + outer_top + ls)
                                 } else { None }
                             } else { None }
                         })
@@ -944,19 +950,21 @@ impl Paginator {
             } else {
                 0.0
             };
-            let outer_bottom = if is_tac_table {
-                crate::renderer::hwpunit_to_px(table.outer_margin_bottom as i32, self.dpi)
-            } else {
-                0.0
-            };
-            // 비-TAC 표: 호스트 문단의 line_spacing도 포함 (레이아웃에서 표 아래에 추가)
-            let host_line_spacing = if !is_tac_table {
-                para.line_segs.last()
+            // layout_table depth=0은 outer_bottom을 반환값에 포함하지 않음
+            let outer_bottom = 0.0;
+            // 호스트 문단의 line_spacing: 레이아웃에서 표 아래에 추가
+            // TAC 표: ctrl_idx 위치의 LINE_SEG line_spacing 사용
+            // 비-TAC 표: 마지막 LINE_SEG line_spacing 사용
+            let host_line_spacing = if is_tac_table {
+                para.line_segs.get(ctrl_idx)
                     .filter(|seg| seg.line_spacing > 0)
                     .map(|seg| crate::renderer::hwpunit_to_px(seg.line_spacing, self.dpi))
                     .unwrap_or(0.0)
             } else {
-                0.0
+                para.line_segs.last()
+                    .filter(|seg| seg.line_spacing > 0)
+                    .map(|seg| crate::renderer::hwpunit_to_px(seg.line_spacing, self.dpi))
+                    .unwrap_or(0.0)
             };
             let is_column_top = st.current_height < 1.0;
             // 자리차지(text_wrap=TopAndBottom) 비-TAC 표:
@@ -991,11 +999,11 @@ impl Paginator {
             let is_last_tac = tac_idx + 1 == tac_table_count;
             para.line_segs.get(tac_idx).map(|seg| {
                 let line_h = crate::renderer::hwpunit_to_px(seg.line_height, self.dpi);
-                if is_last_tac {
-                    line_h
-                } else {
-                    line_h + crate::renderer::hwpunit_to_px(seg.line_spacing, self.dpi)
-                }
+                let ls = if seg.line_spacing > 0 {
+                    crate::renderer::hwpunit_to_px(seg.line_spacing, self.dpi)
+                } else { 0.0 };
+                // 마지막 TAC도 line_spacing 포함 (레이아웃과 일치)
+                line_h + ls
             }).unwrap_or(effective_height + host_spacing)
         } else {
             effective_height + host_spacing
