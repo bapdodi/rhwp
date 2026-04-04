@@ -12,6 +12,7 @@ rhwp에 관심을 가져주셔서 감사합니다!
 
 - **[온라인 데모](https://edwardkim.github.io/rhwp/)** — 브라우저에서 바로 HWP 파일 열기
 - **[VS Code 확장](https://marketplace.visualstudio.com/items?itemName=edwardkim.rhwp-vscode)** — VS Code에서 HWP 미리보기
+- **[npm 패키지](https://www.npmjs.com/package/@rhwp/editor)** — 3줄로 HWP 에디터 임베드
 
 ### 2. 개발 환경 설정 (5분)
 
@@ -36,6 +37,7 @@ npx vite --port 7700
 - [`good first issue`](https://github.com/edwardkim/rhwp/labels/good%20first%20issue) 라벨이 붙은 이슈
 - 렌더링 불일치 제보 (한컴과 비교하여 스크린샷 첨부)
 - 문서 오타/개선
+- [Discussions](https://github.com/edwardkim/rhwp/discussions)에서 질문/아이디어 제안
 
 ## 기여 방법
 
@@ -47,31 +49,63 @@ HWP 파일이 한컴과 다르게 렌더링되면 알려주세요:
 2. **한컴 스크린샷** + **rhwp 스크린샷** 비교 첨부
 3. 가능하면 HWP 파일 첨부 (개인정보 제거 후)
 
-### 코드 기여
+디버깅 정보를 함께 제공하면 수정이 빨라집니다 (아래 "디버깅 가이드" 참고).
 
-```bash
-# 1. Fork → Clone
-git clone https://github.com/{your-id}/rhwp.git
+### 코드 기여 — Fork & PR 워크플로우
 
-# 2. 브랜치 생성
-git checkout -b fix/issue-123
+컨트리뷰터는 **Fork 기반**으로 작업합니다. 저장소에 직접 push할 수 없으며, PR을 통해 코드를 제출합니다.
 
-# 3. 코드 수정 + 테스트
-cargo test
-cargo clippy -- -D warnings
+```
+[본인 Fork]                              [edwardkim/rhwp]
 
-# 4. 커밋 + Push
-git commit -m "간결한 변경 요약 (#123)"
-git push origin fix/issue-123
+1. Fork (GitHub UI)
+   edwardkim/rhwp → myid/rhwp
 
-# 5. Pull Request 생성
+2. Clone
+   git clone https://github.com/myid/rhwp.git
+   cd rhwp
+
+3. 브랜치 생성 + 작업
+   git checkout -b fix/issue-123
+   (코드 수정 + 테스트)
+
+4. Push (본인 Fork에)
+   git push origin fix/issue-123
+
+5. PR 생성 (GitHub UI)                   ──→ devel 브랜치로 PR
+                                              CI 자동 실행 (빌드+테스트+Clippy)
+                                              메인테이너 코드 리뷰
+                                              승인 후 merge
 ```
 
-PR을 보내면 CI가 자동으로 빌드 + 테스트 + Clippy를 실행합니다.
+**중요:**
+- PR 대상 브랜치는 **`devel`** 입니다 (`main` 아님)
+- PR을 생성하면 CI가 자동으로 빌드 + 테스트 + Clippy를 실행합니다
+- CI가 통과하지 않으면 merge할 수 없습니다
+- 메인테이너의 코드 리뷰 승인 후 merge됩니다
+
+### PR 전 체크리스트
+
+```bash
+cargo test                       # 783+ 테스트 통과
+cargo clippy -- -D warnings      # 린트 경고 0건
+```
+
+두 명령이 모두 통과하는지 확인한 후 PR을 생성해주세요.
 
 ### HWP 샘플 파일 제공
 
 다양한 HWP 파일로 테스트할수록 렌더링 품질이 올라갑니다. 개인정보가 없는 공공 문서나 테스트용 파일을 제공해주시면 큰 도움이 됩니다.
+
+## 브랜치 규칙
+
+| 브랜치 | 용도 | 보호 규칙 |
+|--------|------|----------|
+| `main` | 릴리즈 (안정 버전) | PR 필수 + CI 통과 + 리뷰 1명 |
+| `devel` | 개발 통합 (PR 대상) | CI 통과 필수 |
+
+- 컨트리뷰터 PR → `devel`
+- 릴리즈 시 `devel` → `main` + 태그
 
 ## 디버깅 가이드
 
@@ -91,6 +125,8 @@ cargo run --bin rhwp -- dump sample.hwp -s 0 -p 45
 디버그 오버레이는 문단/표에 라벨을 표시합니다:
 - 문단: `s{섹션}:pi={인덱스} y={좌표}`
 - 표: `s{섹션}:pi={인덱스} ci={컨트롤} {행}x{열} y={좌표}`
+
+이 정보를 이슈에 첨부하면 버그 수정이 빨라집니다.
 
 ## 프로젝트 구조
 
@@ -114,19 +150,15 @@ rhwp-studio/        ← 웹 에디터 (TypeScript + Vite)
 - `unwrap()` 최소화
 - 모든 문서는 한국어로 작성
 
-## 테스트
-
-```bash
-cargo test                       # 783+ 단위 테스트
-cargo clippy -- -D warnings     # 린트
-```
-
-PR 전에 반드시 두 명령이 통과하는지 확인해주세요.
-
 ## HWP 단위 참고
 
 - 1 inch = 7,200 HWPUNIT
 - 1 mm ≈ 283.465 HWPUNIT
+
+## 소통
+
+- **[Discussions](https://github.com/edwardkim/rhwp/discussions)** — 질문, 아이디어, 기술 토론
+- **[Issues](https://github.com/edwardkim/rhwp/issues)** — 버그 리포트, 기능 요청
 
 ## Notice
 
